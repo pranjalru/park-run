@@ -84,7 +84,7 @@ body {
   <canvas id="c" aria-label="Park Run game"></canvas>
 
   <div class="hud">
-    <div><span>Distance</span><b id="dist">0 m</b></div>
+    <div><span>Score</span><b id="dist">0</b></div>
     <div class="right"><span>Best</span><b id="best">0 m</b></div>
   </div>
 
@@ -602,7 +602,7 @@ body {
     obstacles: [], pops: [], parts: [], since: 0, gap: 500, wheelAng: 0, best: 0
   };
   try { game.best = parseInt(localStorage.getItem('parkrun-best') || '0', 10) || 0; } catch (e) {}
-  elBest.textContent = game.best + ' m';
+  elBest.textContent = game.best;
   function PX() { return W * 0.27; }
   function airtime() { return 2 * JUMP_V / G; }
 
@@ -615,8 +615,8 @@ body {
       elGo.textContent = touchMode ? 'Tap to drop in' : 'Press space to drop in';
     } else if (kind === 'over') {
       elTitle.textContent = 'Game over';
-      elL1.textContent = Math.floor(game.runDist / 60) + ' m this run';
-      elL2.textContent = 'Best ' + game.best + ' m. ' + (touchMode ? 'Tap' : 'Space') + ' to go again.';
+      elL1.textContent = score() + ' points this run';
+      elL2.textContent = 'Best ' + game.best + '. ' + (touchMode ? 'Tap' : 'Space') + ' to go again.';
       elGo.textContent = touchMode ? 'Tap to go again' : 'Space to go again';
     }
   }
@@ -635,7 +635,7 @@ body {
     game.running = true; game.bailing = false; game.bailT = 0;
     game.runDist = 0; game.runTime = 0; game.v = 300 * S;
     game.jumpY = 0; game.vy = 0; game.air = false; game.airT = 0; game.loadT = 0;
-    game.buffer = 0; game.landT = 0; game.grind = null; game.boardRot = 0; game.slideT = 0; game.trick = null; game.pendingTrick = false; game.labels.length = 0;
+    game.buffer = 0; game.landT = 0; game.grind = null; game.boardRot = 0; game.slideT = 0; game.trick = null; game.pendingTrick = false; game.labels.length = 0; game.bonus = 0;
     game.obstacles.length = 0; game.pops.length = 0; game.parts.length = 0;
     game.since = 0; game.gap = 520 * S; game.bb = null; game.popAnchor = false;
     pose = JSON.parse(JSON.stringify(POSES.ride));
@@ -672,9 +672,9 @@ body {
     spawnPop('bail', PX() + 30 * S, GY - game.jumpY - 120 * S);
     /* the board shoots forward with the run's momentum, flips once, lands and rolls away */
     game.bb = { x: PX(), y: game.jumpY, vx: game.v * 0.85, vy: 620 * S, ang: game.boardRot, spin: -11, ground: false, bounced: false, wheelAng: game.wheelAng };
-    var m = Math.floor(game.runDist / 60);
+    var m = score();
     if (m > game.best) { game.best = m; try { localStorage.setItem('parkrun-best', String(m)); } catch (e) {} }
-    elBest.textContent = game.best + ' m';
+    elBest.textContent = game.best;
     Sound.bail();
   }
   function updateBailBoard(dt, mv) {
@@ -801,7 +801,14 @@ body {
       if (game.loadT <= 0) { game.loadT = 0; takeoff(); }
     }
 
-    if (game.trick) { game.trick.t += dt; if (game.trick.t >= game.trick.dur) game.trick = null; }
+    if (game.trick) {
+      game.trick.t += dt;
+      if (game.trick.t >= game.trick.dur) {
+        game.trick = null;
+        /* a landed-in-time flip trick is worth 10 points */
+        if (game.running) { game.bonus = (game.bonus || 0) + 10; game.labels.push({ text: '+10', t: 0, pts: true }); }
+      }
+    }
 
     if (game.grind) {
       var go = game.grind;
@@ -893,7 +900,7 @@ body {
 
     if (game.running) Sound.roll(game.air || game.grind ? 0 : Math.min(1, game.v / (660 * S)));
     else if (game.bailing) Sound.roll(bailRollLevel());
-    elDist.textContent = Math.floor(game.runDist / 60) + ' m';
+    elDist.textContent = score();
   }
 
   /* ---------- render ---------- */
@@ -994,8 +1001,19 @@ body {
     g.globalAlpha = 1;
   }
 
+  /* score: one point per metre plus 10 for every flip trick */
+  function score() { return Math.floor(game.runDist / 60) + (game.bonus || 0); }
   function drawLabel(g, l) {
     var p = l.t / 0.8, a = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3, rise = p * 26 * S;
+    if (l.pts) {
+      var px2 = PX() - 20 * S, py2 = GY - game.jumpY - 150 * S - p * 40 * S;
+      g.save(); g.globalAlpha = Math.max(0, a);
+      g.font = '700 ' + Math.round(34 * S) + 'px "Array", "Array Wide", "Arial Black", sans-serif'; g.textAlign = 'center';
+      g.fillStyle = C.ink; g.fillText(l.text, px2 - 3 * S, py2 + 3 * S);
+      g.fillStyle = C.paper; g.fillText(l.text, px2, py2);
+      g.restore();
+      return;
+    }
     var x = PX() + 70 * S, y = GY - game.jumpY - 200 * S - rise;
     g.save(); g.globalAlpha = Math.max(0, a);
     g.font = '700 ' + Math.round(24 * S) + 'px "Array Wide", "Array", "Arial Black", sans-serif'; g.textAlign = 'center';

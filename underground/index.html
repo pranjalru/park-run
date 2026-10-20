@@ -339,7 +339,7 @@ body {
     obstacles: [], parts: [], rings: [], labels: [], shapes: [], nextWY: 0, lastTurnT: 0, turnAlt: 0, gyroCheck: 0
   };
   try { game.best = parseInt(localStorage.getItem('parkrun-ug-best') || '0', 10) || 0; } catch (e) {}
-  elBest.textContent = game.best + ' m';
+  elBest.textContent = game.best;
   var player = makeBoard(0, DECKS.spiral, PALS[0], true, 0.5, 0);
   var crew = [
     makeBoard(1, DECKS.stars, PALS[1], false, 0.2, -70),
@@ -363,7 +363,11 @@ body {
   stage.addEventListener('touchstart', function (e) { input.touching = true; input.touchX = stageX(e.touches[0].clientX); }, { passive: true });
   stage.addEventListener('touchmove', function (e) { input.touchX = stageX(e.touches[0].clientX); }, { passive: true });
   stage.addEventListener('touchend', function () { input.touching = false; }, { passive: true });
-  window.addEventListener('deviceorientation', function (e) { if (e.gamma !== null && e.gamma !== undefined) { input.gyro = e.gamma; input.gyroAt = performance.now(); } });
+  window.addEventListener('deviceorientation', function (e) {
+    if (e.gamma === null || e.gamma === undefined) return;
+    input.gyro = input.gyro === null ? e.gamma : input.gyro + (e.gamma - input.gyro) * 0.2;
+    input.gyroAt = performance.now();
+  });
   var askedMotion = false;
   function askMotion() {
     if (askedMotion) return; askedMotion = true;
@@ -374,7 +378,7 @@ body {
   function targetX() {
     var lo = M, hi = W - M;
     if (input.touching && input.touchX !== null) return clamp(input.touchX, lo, hi);
-    if (input.gyro !== null && performance.now() - input.gyroAt < 600) return clamp(W / 2 + clamp(input.gyro / 22, -1, 1) * (W / 2 - M), lo, hi);
+    if (input.gyro !== null && performance.now() - input.gyroAt < 600) { var gv = input.gyro, gm = Math.max(0, Math.abs(gv) - 3) * (gv < 0 ? -1 : 1); return clamp(W / 2 + clamp(gm / 38, -1, 1) * (W / 2 - M), lo, hi); }
     if (input.mouseX !== null) return clamp(input.mouseX, lo, hi);
     return W / 2;
   }
@@ -402,7 +406,7 @@ body {
     crew.forEach(function (c, i) { c.wy = game.dist - (220 + i * 90) * S; c.air = 0; c.x = W * c.lane; c.vx = 0; });
     /* fresh lines every run, so old paths never pile up */
     boards.forEach(function (b) { b.trail.length = 0; b.pending = null; b.trick = null; b.slide = 0; });
-    game.labels.length = 0; game.shapes.length = 0;
+    game.labels.length = 0; game.shapes.length = 0; game.bonus = 0;
     if (touchMode) game.gyroCheck = 1.6;
     stopAll(); loopOn('cruise', 0);
     setHint();
@@ -412,13 +416,16 @@ body {
     game.state = 'over'; game.crashT = 0; game.crashV = game.v;
     player.spin = (player.vx >= 0 ? 1 : -1) * 9;
     spawnShapes(player.x, player.wy, 14, 2.8);
-    var m = meters();
+    var m = score();
     if (m > game.best) { game.best = m; try { localStorage.setItem('parkrun-ug-best', String(m)); } catch (e) {} }
-    elBest.textContent = game.best + ' m';
+    elBest.textContent = game.best;
     playShot('bail');
     elWord.textContent = 'game over';
     setTimeout(setHint, 800);
   }
+  /* score: one point per metre, 10 per star jumped, 10 per rail or pad, 5 per trick */
+  function score() { return meters() + (game.bonus || 0); }
+  function addPts(n, x) { if (game.state !== 'run') return; game.bonus = (game.bonus || 0) + n; game.labels.push({ text: '+' + n, t: 0, x: x === undefined ? player.x : x, pts: true }); }
   function meters() { return Math.max(0, Math.floor((game.dist - (game.startDist || 0)) / (50 * S))); }
 
   /* ================= obstacles ================= */
@@ -477,7 +484,7 @@ body {
     var type = Math.random() < 0.5 ? 'kickflip' : 'shove';
     b.trick = { type: type, t: 0, dur: type === 'kickflip' ? 0.34 : 0.3 };
     spawnShapes(b.x, b.wy, b.player ? 7 : 3);
-    if (b.player) { playShot('trick', { pan: (b.x / W * 2 - 1) * 0.5 }); game.labels.push({ text: TRICK_NAMES[type], t: 0, x: b.x }); }
+    if (b.player) { playShot('trick', { pan: (b.x / W * 2 - 1) * 0.5 }); game.labels.push({ text: TRICK_NAMES[type], t: 0, x: b.x }); addPts(5, b.x); }
     else if (onScreen(b)) playShot('trick', { vol: 0.15, pan: (b.x / W * 2 - 1) * 0.8 });
   }
   /* click or tap: pop an ollie with a flip trick (or flip during an automatic jump if there is time) */
@@ -495,6 +502,7 @@ body {
   }
   function startGrind(p, o) {
     p.grind = o;
+    if (p.player) addPts(10, o.x);
     spawnShapes(p.x, p.wy, 5);
     playShot(o.type === 'rail' ? 'railLand' : 'padLand', { pan: (p.x / W * 2 - 1) * 0.5 });
     loopOn(o.type === 'rail' ? 'railDrag' : 'padDrag');
@@ -546,7 +554,7 @@ body {
         var o = game.obstacles[i];
         if (o.type !== 'dot' || o.hit[b.id]) continue;
         var d = o.wy - b.wy;
-        if (d > 0 && d < 30 * S + game.v * 0.05 && Math.abs(o.x - b.x) < 40 * S) { o.hit[b.id] = 1; jump(b); spawnShapes(o.x, o.wy, b.player ? 5 : 2); break; }
+        if (d > 0 && d < 30 * S + game.v * 0.05 && Math.abs(o.x - b.x) < 40 * S) { o.hit[b.id] = 1; jump(b); spawnShapes(o.x, o.wy, b.player ? 5 : 2); if (b.player) addPts(10, o.x); break; }
       }
     }
     /* the crew hop over rails and pads they cross, so their lines never cut through them */
@@ -678,7 +686,7 @@ body {
 
     if (game.state === 'run') {
       cruiseLevel(player.air > 0 || player.grind ? 0 : Math.min(1, (game.v - 200 * S) / (360 * S)) * 0.8 + 0.2);
-      var m = meters() + ' m';
+      var m = String(score());
       if (elWord.textContent !== m) elWord.textContent = m;
     } else if (game.state === 'over') {
       var seen = 0; crew.forEach(function (c) { if (onScreen(c)) seen++; });
@@ -820,6 +828,13 @@ body {
     game.labels.forEach(function (l) {
       var p = l.t / 0.8, a = p < 0.65 ? 1 : 1 - (p - 0.65) / 0.35;
       ctx.save(); ctx.globalAlpha = Math.max(0, a);
+      if (l.pts) {
+        ctx.font = '700 ' + Math.round(30 * S) + 'px Array, "Arial Black", sans-serif'; ctx.textAlign = 'center';
+        var px2 = clamp(l.x, 60 * S, W - 60 * S), py2 = HEADY - 130 * S - p * 40 * S;
+        ctx.fillStyle = C.bg; ctx.fillText(l.text, px2 + 2 * S, py2 + 2 * S);
+        ctx.fillStyle = C.yellow; ctx.fillText(l.text, px2, py2);
+        ctx.restore(); return;
+      }
       ctx.font = '600 ' + Math.round(30 * S) + 'px Khand, "Arial Narrow", sans-serif'; ctx.textAlign = 'center';
       var x = clamp(l.x, 70 * S, W - 70 * S), y = HEADY - 88 * S - p * 30 * S;
       ctx.fillStyle = C.bg; ctx.fillText(l.text.toUpperCase(), x + 2 * S, y + 2 * S);
