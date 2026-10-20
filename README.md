@@ -20,6 +20,7 @@ An abstract runner set in a printed blue city. Jump the junk, land on rails and 
 - Clear cans, bins, cones, boxes and rolling boards.
 - Land on top of a rail or manual pad to slide along it. Hitting one from the side ends the run.
 - A trick has to finish before you land, or you bail.
+- **Score:** 1 point per metre, plus 10 for every flip trick you land.
 
 ## 2. Park Run Underground (top-down view)
 
@@ -37,6 +38,7 @@ A top-down version in a transit-map style. You ride the centre board (the pink s
 - **Stars:** you ollie over them automatically.
 - **Walls:** you can't jump them. Steer through the single gap, or the run ends.
 - **Rails and manual pads:** ride onto them from the end or the side to slide.
+- **Score:** 1 point per metre, plus 10 for every star you jump, 10 for every rail or manual pad you get onto, and 5 for every trick.
 - **Phone tilt:** on iPhone, allow motion access when Safari asks after your first tap. If tilt doesn't respond, drag a finger to steer instead.
 
 ## Credits
